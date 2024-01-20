@@ -14,7 +14,7 @@ admin.register_handlers_admin()
 client.register_handlers_client()
 other.register_handlers_other()
 
-exec_group_msg(str(datetime.datetime.now()) + ': Бот запущен\nМетод: ' + (os.getenv('connectType') or 'null') +
+exec_group_msg(str(datetime.datetime.now()) + ': TST! Бот запущен\nМетод: ' + (os.getenv('connectType') or 'null') +
                '\nhttps://api.telegram.org/bot' + (os.getenv('Token') or '') +
                '/setWebhook?url=' + (os.getenv('webhookHost') or '') +
                f'\nbot_id = {bot_id}' +
