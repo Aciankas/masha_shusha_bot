@@ -7,16 +7,25 @@ from aiogram.utils.exceptions import MessageToDeleteNotFound, BotBlocked
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.utils.exceptions import InvalidQueryID
 from dotenv import load_dotenv, find_dotenv
-from dtbase import base, cur, scheduled_be_send, get_slide, delete_scheduled, scheduled_exists, \
-    scheduled_coupons_be_closed, cancel_coupon, is_coupon_active, set_st_bots_name, set_start_slide
 import os
-
+import psycopg2 as ps
+import psycopg2.extras
 
 scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
 
 
 async def start_apscheduler():
     scheduler.start()
+
+
+try:
+    base = ps.connect(os.environ.get('DATABASE_URL'), sslmode='require')
+    cur = base.cursor(cursor_factory=ps.extras.RealDictCursor)
+    print(f'База подключена, URL: {os.environ.get("DATABASE_URL")}')
+except Exception as error:
+    base = None
+    cur = None
+    print(f'!!База не подключена!! {error}')
 
 
 async def on_startup(dp: Dispatcher):
@@ -43,8 +52,8 @@ bot = Bot(token=os.getenv('Token'))
 dp = Dispatcher(bot, storage=storage)
 timezone = (int(os.getenv('Timezone') or 3))
 
-set_st_bots_name(bot_id)
-set_start_slide(bot_id)
+# set_md_bots_name(bot_id)
+# set_start_slide(bot_id)
 
 
 async def group_msg(text, usr_ids=None, content_type=None, content_id=None, keyboard=None, cur_bot=bot, parse_mode=ParseMode.HTML):
@@ -95,6 +104,29 @@ async def group_msg(text, usr_ids=None, content_type=None, content_id=None, keyb
                                    "|" + str(content_id or 'None'))
 
 
+class ErrorStack:
+    def __init__(self):
+        self.stack = dict()
+
+    def add(self, err_text: str):
+        if err_text in self.stack:
+            self.stack[err_text] += 1
+        else:
+            self.stack[err_text] = 1
+
+    async def send(self):
+        text = ''
+        for err, times in self.stack.items():
+            text += f"times: {times}\n{err}\n\n"
+        text_fragments = [text[i:i + 3000] for i in range(0, len(text), 3000)]
+        for fragment in text_fragments:
+            await group_msg(fragment)
+        self.stack = dict()
+
+
+errorstack = ErrorStack()
+
+
 async def delete_message(message: types.Message):
     try:
         await message.delete()
@@ -108,24 +140,27 @@ async def invalid_query_id_handler(update, error):
     return True
 
 
+from dtbase import get_scheduled_be_send, get_slide_deprecated, delete_scheduled, is_scheduled_exists, \
+    get_scheduled_coupons_be_closed, cancel_coupon, is_coupon_active
 from message_constructor import construct_slide_from_message, slide_button_appears
 
 
 async def scheduler_job():
-    scheduled_messages = scheduled_be_send(bot_id)
+    await errorstack.send()
+    scheduled_messages = get_scheduled_be_send(bot_id)
     for message in scheduled_messages:
         try:
-            slide = get_slide(int(message['slide_id']), bot_id)
-            if scheduled_exists(message['send_time'], message['usr_id'], message['slide_id']):
+            slide = get_slide_deprecated(int(message['slide_id']), bot_id)
+            if is_scheduled_exists(message['send_time'], message['usr_id'], message['slide_id']):
                 if await slide_button_appears(slide["appearance_mod"], int(message['usr_id'])):
                     await construct_slide_from_message(slide, int(message['usr_id']), is_bot_msg=True)
                 delete_scheduled(message['send_time'], message['usr_id'], message['slide_id'])
         except Exception as err:
             await group_msg(f"ScheduleSlideError: {str(message)}, {err}")
-    coupons_canceled = scheduled_coupons_be_closed(bot_id)
+    coupons_canceled = get_scheduled_coupons_be_closed(bot_id)
     for coupon in coupons_canceled:
         try:
-            slide = get_slide(int(coupon['end_slide_id']), bot_id)
+            slide = get_slide_deprecated(int(coupon['end_slide_id']), bot_id)
             is_active = is_coupon_active(coupon['usr_id'], coupon['coupon_id'])
             cancel_coupon(coupon['end_time'], coupon['usr_id'], coupon['coupon_id'])
             if await slide_button_appears(slide["appearance_mod"], int(coupon['usr_id'])) and is_active:

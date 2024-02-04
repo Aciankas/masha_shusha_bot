@@ -5,8 +5,11 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.dispatcher.filters import Text
 from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputFile
+
+import entities
 from create_bot import dp, admin_ids, base, cur, bot_id, delete_message, group_msg
-from dtbase import get_slide, db_execute, get_keyboard, create_new_button, get_button_by_ids, delete_button_by_ids
+from dtbase import get_slide_deprecated, db_execute, get_keyboard, create_new_button, get_button_by_ids, delete_button_by_ids, \
+    insert_media
 from message_constructor import construct_slide, SlideError, construct_keyboard_from_select, \
     construct_slide_from_message
 from aiogram.utils.exceptions import WrongFileIdentifier
@@ -298,7 +301,7 @@ async def test_raw_slide_post(message: types.Message):
         if len(cmd_list) == 2 and cmd_list[1].isdigit():
             slide_id = cmd_list[1]
             try:
-                slide = get_slide(int(slide_id), bot_id)
+                slide = get_slide_deprecated(int(slide_id), bot_id)
                 try:
                     await construct_slide(slide, message)
                 except SlideError:
@@ -315,13 +318,13 @@ async def test_raw_slide_post(message: types.Message):
 async def test_slide_menu(slide_id: str, user_id=admin_ids[0]):
     try:
         if slide_id == 'new':
-            db_execute(f"insert into slides (bot_id, message) values ('{bot_id}', 'empty')")
-            slide_id = db_execute(f"select max(id) as id from slides")[0]["id"]
+            db_execute(f"insert into md_slides (bot_id, message) values ('{bot_id}', 'empty')")
+            slide_id = db_execute(f"select max(id) as id from md_slides")[0]["id"]
             await test_slide_menu(slide_id, user_id)
         elif type(slide_id) is int or slide_id.isdigit():
-            slide = get_slide(int(slide_id), bot_id)
+            slide = get_slide_deprecated(int(slide_id), bot_id)
             for usr in admin_ids:
-                db_execute(f"delete from user_activity where usr_id = {usr};")
+                db_execute(f"delete from ft_user_activity where usr_id = {usr};")
             await group_msg(f"slide = {slide['id']}\n"
                             f"header = {slide['header']}\n"
                             f"media_id = {slide['media_id']}\n"
@@ -339,8 +342,8 @@ async def test_slide_menu(slide_id: str, user_id=admin_ids[0]):
             except SlideError:
                 await group_msg("Что-то пошло не так")
             for usr in admin_ids:
-                db_execute(f"delete from user_activity where usr_id = {usr}; "
-                           f"delete from schedule where usr_id = {usr}; ")
+                db_execute(f"delete from ft_user_activity where usr_id = {usr}; "
+                           f"delete from ft_schedule where usr_id = {usr}; ")
     except ValueError:
         await group_msg('Неверный номер слайда')
     except Exception as err:
@@ -381,7 +384,7 @@ async def receive_changed_message(message: types.Message, state: FSMContext):
     insert_value = message.text
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
-    db_execute(f"update slides set message = {insert_value} where id = {slide_id}")
+    db_execute(f"update md_slides set message = {insert_value} where id = {slide_id}")
     message.text = f'slide {slide_id}'
     await state.finish()
     await test_slide_post(message)
@@ -401,7 +404,7 @@ async def receive_changed_media(message: types.Message, state: FSMContext):
         slide_id = data['slide_id']
     media_id = None
     if message.content_type == 'text' and message.text == 'null':
-        db_execute(f"update slides set media_id = null where id = {slide_id}")
+        db_execute(f"update md_slides set media_id = null where id = {slide_id}")
     else:
         if message.content_type == 'photo':
             media_id = message.photo[0].file_id
@@ -416,10 +419,10 @@ async def receive_changed_media(message: types.Message, state: FSMContext):
         elif message.content_type == 'animation':
             media_id = message.animation.file_id
         if media_id:
-            select = db_execute(f"select * from media where media_id = '{media_id}' and type = '{message.content_type}'")
+            select = db_execute(f"select * from md_media where media_id = '{media_id}' and type = '{message.content_type}'")
             if not select:
-                db_execute(f"insert into media (type, media_id) values ('{message.content_type}', '{media_id}')")
-            db_execute(f"update slides set media_id = (select max(id) from media where media_id = '{media_id}') "
+                insert_media(media_id, message.content_type)  # db_execute(f"insert into md_media (type, media_id) values ('{message.content_type}', '{media_id}')")
+            db_execute(f"update md_slides set media_id = (select max(id) from md_media where media_id = '{media_id}') "
                        f"where id = {slide_id}")
         else:
             await group_msg('receive_changed_media - пустой media_id')
@@ -430,7 +433,7 @@ async def receive_changed_media(message: types.Message, state: FSMContext):
 
 @dp.callback_query_handler(text_startswith="change_bot_id")
 async def change_bot_id(callback: types.CallbackQuery, state: FSMContext):
-    select = db_execute(f"select distinct name from st_bots")
+    select = db_execute(f"select distinct name from md_bots")
     names = ''
     for row in select:
         names = names + f"{row['name']}\n"
@@ -446,7 +449,7 @@ async def receive_changed_bot_id(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         slide_id = data['slide_id']
     try:
-        db_execute(f"update slides set bot_id = '{message.text}' where id = {slide_id}")
+        db_execute(f"update md_slides set bot_id = '{message.text}' where id = {slide_id}")
     except Exception as err:
         await group_msg(f"receive_changed_bot_id - {err}")
     message.text = f'slide {slide_id}'
@@ -485,8 +488,8 @@ async def receive_changed_modifier(message: types.Message, state: FSMContext):
         insert_value = f"'{insert_value}'"
     try:
         if message.text in ['start', 'correct_payment_file', 'incorrect_payment_file'] or message.text.startswith(('course_reject_', 'course_paid_', 'course_price_', 'coupon_start_')):
-            db_execute(f"update slides set modifier = null where id = (select id from slides where modifier = '{message.text}' and bot_id = '{bot_id}')")
-        db_execute(f"update slides set modifier = {insert_value} where id = {slide_id}")
+            db_execute(f"update md_slides set modifier = null where id = (select id from md_slides where modifier = '{message.text}' and bot_id = '{bot_id}')")
+        db_execute(f"update md_slides set modifier = {insert_value} where id = {slide_id}")
     except Exception as err:
         await group_msg(f"receive_changed_modifier - {err}")
     message.text = f'slide {slide_id}'
@@ -517,7 +520,7 @@ async def receive_changed_appearance_mod(message: types.Message, state: FSMConte
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update slides set appearance_mod = {insert_value} where id = {slide_id}")
+        db_execute(f"update md_slides set appearance_mod = {insert_value} where id = {slide_id}")
     except Exception as err:
         await group_msg(f"receive_changed_appearance_mod - {err}")
     message.text = f'slide {slide_id}'
@@ -542,7 +545,7 @@ async def receive_changed_schedule_set(message: types.Message, state: FSMContext
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update slides set schedule_set = {insert_value} where id = {slide_id}")
+        db_execute(f"update md_slides set schedule_set = {insert_value} where id = {slide_id}")
     except Exception as err:
         await group_msg(f"receive_changed_schedule_set - {err}")
     message.text = f'slide {slide_id}'
@@ -566,7 +569,7 @@ async def receive_changed_schedule_priority(message: types.Message, state: FSMCo
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update slides set schedule_priority = {insert_value} where id = {slide_id}")
+        db_execute(f"update md_slides set schedule_priority = {insert_value} where id = {slide_id}")
     except Exception as err:
         await group_msg(f"receive_changed_schedule_priority - {err}")
     message.text = f'slide {slide_id}'
@@ -590,7 +593,7 @@ async def receive_changed_header(message: types.Message, state: FSMContext):
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update slides set header = {insert_value} where id = {slide_id}")
+        db_execute(f"update md_slides set header = {insert_value} where id = {slide_id}")
     except Exception as err:
         await group_msg(f"receive_changed_header - {err}")
     message.text = f'slide {slide_id}'
@@ -682,7 +685,7 @@ async def receive_chg_button_row_num(message: types.Message, state: FSMContext):
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update buttons set row_num = {insert_value} "
+        db_execute(f"update md_buttons set row_num = {insert_value} "
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_row_num - {err}")
@@ -710,7 +713,7 @@ async def receive_chg_button_row_pos(message: types.Message, state: FSMContext):
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update buttons set row_pos = {insert_value} "
+        db_execute(f"update md_buttons set row_pos = {insert_value} "
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_row_pos - {err}")
@@ -738,7 +741,7 @@ async def receive_chg_button_slide_id(message: types.Message, state: FSMContext)
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update buttons set slide_id = {insert_value} "
+        db_execute(f"update md_buttons set slide_id = {insert_value} "
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_slide_id - {err}")
@@ -766,7 +769,7 @@ async def receive_chg_button_slide_link(message: types.Message, state: FSMContex
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update buttons set slide_link = {insert_value} "
+        db_execute(f"update md_buttons set slide_link = {insert_value} "
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_slide_link - {err}")
@@ -794,7 +797,7 @@ async def receive_chg_button_name(message: types.Message, state: FSMContext):
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update buttons set name = {insert_value} "
+        db_execute(f"update md_buttons set name = {insert_value} "
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_name - {err}")
@@ -822,7 +825,7 @@ async def receive_chg_button_url(message: types.Message, state: FSMContext):
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update buttons set url = {insert_value} "
+        db_execute(f"update md_buttons set url = {insert_value} "
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_url - {err}")
@@ -831,7 +834,7 @@ async def receive_chg_button_url(message: types.Message, state: FSMContext):
 
 @dp.callback_query_handler(text_startswith="chg_button_modifier", state=FSMSlideChange.slide_change_buttons)
 async def chg_button_modifier(callback: types.CallbackQuery, state: FSMContext):
-    await group_msg("course_pay='course_id'\n"
+    await group_msg("merch_pay='merch_id'\n"
                     "paycheck='course_id','accept_slide_id','decline_slide_id'\n"
                     "payment_refuse\n"
                     "questionnaire='questionnaire_id','end_slide_id'\n"
@@ -854,7 +857,7 @@ async def receive_chg_button_modifier(message: types.Message, state: FSMContext)
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update buttons set modifier = {insert_value} "
+        db_execute(f"update md_buttons set modifier = {insert_value} "
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_modifier - {err}")
@@ -889,14 +892,32 @@ async def receive_chg_button_appearance_mod(message: types.Message, state: FSMCo
     if message.text != 'null':
         insert_value = f"'{insert_value}'"
     try:
-        db_execute(f"update buttons set appearance_mod = {insert_value} "
+        db_execute(f"update md_buttons set appearance_mod = {insert_value} "
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_appearance_mod - {err}")
     await change_buttons_menu(slide_id, state)
 
 
+async def obj_testing(message: types.Message):
+    if message.from_user.id in admin_ids:
+        test_id = int(message.text.split(' ')[1])
+        entity = entities.Merchandise(test_id)
+
+        courses_str = ''
+        for course in entity.courses:
+            courses_str += f"course_id: {course.id} - {type(course.id).__name__}\n"\
+                           f"course_name: {course.name} - {type(course.name).__name__}\n"\
+                           f"course_bot_id: {course.bot_id} - {type(course.bot_id).__name__}\n"
+
+        await group_msg(f"id: {entity.id} - {type(entity.id).__name__}\n"
+                        f"name: {entity.name} - {type(entity.name).__name__}\n"
+                        f"price: {entity.price} - {type(entity.price).__name__}\n"
+                        f"courses:\n{courses_str}")
+
+
 def register_handlers_admin():  # Порядок Важен!
+    dp.register_message_handler(obj_testing, Text(startswith='/tst'), state='*')  # УДАЛИТЬ ПОСЛЕ ТЕСТИРОВАНИЯ - ЦЕ ХУIТА
     dp.register_message_handler(cm_cancel, state='*', commands='отмена')
     dp.register_message_handler(cm_cancel, Text(equals='/отмена', ignore_case=True), state='*')
     dp.register_message_handler(receive_changed_message, state=FSMSlideChange.slide_change_message)

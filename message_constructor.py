@@ -1,26 +1,25 @@
 import datetime
 import re
 
-from aiogram import types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from aiogram.types import InputMediaPhoto, InputMediaVideo, InputMediaAudio, InputMediaAnimation, InputMediaDocument
 from aiogram.utils.exceptions import BotBlocked, ChatNotFound, UserDeactivated, MessageNotModified, WrongFileIdentifier
 from psycopg2.extras import RealDictRow
 
-from dtbase import get_mediagroup, get_keyboard, click_log, user_active_slides, create_scheduled, delete_for_blocked, \
-    create_scheduled_coupon, get_coupon_by_id, coupons_for_course, is_coupon_active, spec_to_text, get_medialist_first, \
-    is_course_paid, get_slide
+from dtbase import get_mediagroup, get_keyboard, click_log, get_slides_from_list_visited, create_scheduled, delete_for_blocked, \
+    create_scheduled_coupon, get_coupon_by_id, get_coupons_for_merch, is_coupon_active, spec_to_text, get_medialist_first, \
+    is_course_paid, get_slide_deprecated
 from create_bot import group_msg, bot, bot_id, timezone, admin_ids
 
 
-def nvl(val, non_val):
+def nvl(val, non_val):  # DEPRECATED - moved to entities
     if val is None:
         return non_val
     else:
         return val
 
 
-def get_weekday(weekday, week=None, hour=None, minute=None):
+def get_weekday(weekday, week=None, hour=None, minute=None):  # DEPRECATED - moved to entities
     if week is None:
         week = 0
     if hour is None:
@@ -30,7 +29,7 @@ def get_weekday(weekday, week=None, hour=None, minute=None):
     return datetime.datetime.combine((datetime.datetime.now() + datetime.timedelta(days=week*7 + (weekday - datetime.datetime.now().weekday() - 1)%7 + 1)), datetime.time(hour, minute)) - datetime.timedelta(hours=timezone)
 
 
-def get_day(day, hour=None, minute=None):
+def get_day(day, hour=None, minute=None):  # DEPRECATED - moved to entities
     if hour is None:
         hour = 12
     if minute is None:
@@ -38,11 +37,11 @@ def get_day(day, hour=None, minute=None):
     return datetime.datetime.combine((datetime.datetime.now() + datetime.timedelta(days=day)), datetime.time(hour, minute)) - datetime.timedelta(hours=timezone)
 
 
-def get_minutes_from_now(minutes):
+def get_minutes_from_now(minutes):  # DEPRECATED - moved to entities
     return datetime.datetime.now() + datetime.timedelta(minutes=minutes)
 
 
-def convert_spec_message_text(text, user_id=None):  # спец текст находится между %spc%
+def convert_spec_message_text(text, user_id=None):  # DEPRECATED - moved to entities  # спец текст находится между %spc%
     try:
         if text is None or text.find('%spc%') == -1:
             return text
@@ -62,7 +61,7 @@ def convert_spec_message_text(text, user_id=None):  # спец текст нах
         return str(text) + '\n\nconversion_error: ' + str(err)
 
 
-async def schedule_create(string, user_id):  # 'weekday=0,week=0,hour=13,minute=30,slide=2;day=2,hour=10,minute=20,slide=3;minutes=30,slide=4'
+async def schedule_create(string, user_id):  # DEPRECATED - moved to entities  # 'weekday=0,week=0,hour=13,minute=30,slide=2;day=2,hour=10,minute=20,slide=3;minutes=30,slide=4'
     schedules_list = string.split(';')
     for element in schedules_list:
         try:
@@ -87,7 +86,7 @@ async def schedule_create(string, user_id):  # 'weekday=0,week=0,hour=13,minute=
             await group_msg(f"Schedule parsing error at '{element}': {err}")
 
 
-async def coupon_schedule_create(user_id, coupon_id):  # 'weekday=0,week=0,hour=13','minute=30;day=2,hour=10,minute=20','minutes=30','20.06.2024 12:00'
+async def coupon_schedule_create(user_id, coupon_id):  # DEPRECATED - moved to entities # 'weekday=0,week=0,hour=13','minute=30;day=2,hour=10,minute=20','minutes=30','20.06.2024 12:00'
     try:
         coupon = get_coupon_by_id(coupon_id)
         schedule_parsed = None
@@ -118,7 +117,7 @@ class SlideError(Exception):
     pass
 
 
-async def slide_button_appears(appearance_mod, user_id=None):
+async def slide_button_appears(appearance_mod, user_id=None):  # DEPRECATED - moved to entities
     try:
         if appearance_mod is None:
             return True
@@ -138,7 +137,7 @@ async def slide_button_appears(appearance_mod, user_id=None):
         elif mod == 'course_not_paid':
             return not is_course_paid(user_id, elements[0])
         else:
-            visited_count = user_active_slides(elements, user_id)
+            visited_count = get_slides_from_list_visited(elements, user_id)
             if mod == 'disappear_any':
                 return visited_count == 0
             elif mod == 'disappear_all':
@@ -151,7 +150,7 @@ async def slide_button_appears(appearance_mod, user_id=None):
         await group_msg(f'slide_button_appears error: {err}')
 
 
-async def construct_keyboard_from_select(select, user_id=None):
+async def construct_keyboard_from_select(select, user_id=None):  # DEPRECATED - moved to entities
     if select is not None:
         try:
             cur_row_list = []
@@ -181,7 +180,7 @@ async def construct_keyboard_from_select(select, user_id=None):
         return None
 
 
-async def construct_keyboard(slide_id, user_id=None, modifier=None, applied_answers=None):  # ✅
+async def construct_keyboard(slide_id, user_id=None, modifier=None, applied_answers=None):  # ✅  # DEPRECATED - moved to entities
     select = get_keyboard(slide_id)
     if modifier in ('quest_buttons', 'quest_multiple'):
         for button in select:
@@ -201,7 +200,7 @@ async def construct_keyboard(slide_id, user_id=None, modifier=None, applied_answ
         return None
 
 
-async def construct_slide(slide, msg, is_bot_msg=False):
+async def construct_slide(slide, msg, is_bot_msg=False):  # DEPRECATED
     try:
         user = msg.from_user
         # if type(msg) is types.CallbackQuery:
@@ -216,7 +215,7 @@ async def construct_slide(slide, msg, is_bot_msg=False):
         raise SlideError(err)
 
 
-async def construct_slide_from_message(slide, user_id, is_bot_msg=False):
+async def construct_slide_from_message(slide, user_id, is_bot_msg=False):  # DEPRECATED
     try:
         msg = None
         spec_text = ''
@@ -238,7 +237,7 @@ async def construct_slide_from_message(slide, user_id, is_bot_msg=False):
         elif 'redirect' in modifier:
             try:
                 mod_value = str(slide['modifier']).split('=')[1]
-                msg = await construct_slide_from_message(get_slide(mod_value, bot_id), user_id, is_bot_msg)
+                msg = await construct_slide_from_message(get_slide_deprecated(mod_value, bot_id), user_id, is_bot_msg)
             except Exception as err:
                 await group_msg(f'slide_redirect_error: slide={slide["id"]}; err - {err}')
         else:
@@ -250,7 +249,7 @@ async def construct_slide_from_message(slide, user_id, is_bot_msg=False):
             if 'coupon_start' in modifier:
                 await coupon_schedule_create(user_id, int(slide["modifier"].split('_')[2]))
             elif 'course_price' in modifier:
-                coupons = coupons_for_course(user_id, int(slide["modifier"].split('_')[2]))
+                coupons = get_coupons_for_merch(user_id, int(slide["modifier"].split('_')[2]))
                 for coupon in coupons:
                     keyboard.row(InlineKeyboardButton(text=coupon["name"], callback_data=f'coupon_use={slide["modifier"].split("_")[2]},{coupon["id"]}'))
 
@@ -349,33 +348,3 @@ async def construct_slide_from_message(slide, user_id, is_bot_msg=False):
     except Exception as err:
         await group_msg(f'slide_error: slide={slide["id"]}; err - {type(err).__name__}:{err}\nSlide:\n{slide}\n\nKeyboard:\n{keyboard}')
         raise SlideError
-
-
-async def change_slide(chat_id, message_id, media_type=None, media_id=None, text=None, reply_markup=None):
-    try:
-        if media_type is None:
-            if text is not None:
-                await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text)
-            if reply_markup is not None:
-                    await bot.edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=reply_markup)
-        else:
-            media = types.InputMedia()
-            if media_type == 'gif':
-                media = InputMediaAnimation(media=media_id)
-            elif media_type == 'document':
-                media = InputMediaDocument(media=media_id)
-            elif media_type == 'voice':
-                media = InputMediaAudio(media=media_id)
-            elif media_type == 'photo':
-                media = InputMediaPhoto(media=media_id)
-            elif media_type == 'video':
-                media = InputMediaVideo(media=media_id)
-            await bot.edit_message_media(media=media, chat_id=chat_id, message_id=message_id)
-            if text is not None:
-                await bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=text)
-            if reply_markup is not None:
-                await bot.edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=reply_markup)
-    except MessageNotModified:
-        pass
-    except Exception as err:
-        await group_msg(f"change_slide_err: {type(err).__name__}: {err}")

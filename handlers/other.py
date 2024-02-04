@@ -44,42 +44,42 @@ async def text_message_handler(message: types.Message):
 async def photo_message_handler(message: types.Message):
     if message.from_user.id in admin_ids:
         await group_msg(message.photo[0].file_id, None, 'photo', message.photo[0].file_id)
-    db_execute(f"insert into media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'photo', '{message.photo[0].file_id}', '{(message.caption or '')}', {current_timestamp()})")
+    db_execute(f"insert into md_media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'photo', '{message.photo[0].file_id}', '{(message.caption or '')}', {current_timestamp()})")
     await delete_message(message)
 
 
 async def video_message_handler(message: types.Message):
     if message.from_user.id in admin_ids:
         await group_msg(message.video.file_id, None, 'video', message.video.file_id)
-    db_execute(f"insert into media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'video', '{message.video.file_id}', '{(message.caption or '')}', {current_timestamp()})")
+    db_execute(f"insert into md_media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'video', '{message.video.file_id}', '{(message.caption or '')}', {current_timestamp()})")
     await delete_message(message)
 
 
 async def document_message_handler(message: types.Message):
     if message.from_user.id in admin_ids:
         await group_msg(message.document.file_id, None, 'document', message.document.file_id)
-    db_execute(f"insert into media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'document', '{message.document.file_id}', '{(message.caption or '')}', {current_timestamp()})")
+    db_execute(f"insert into md_media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'document', '{message.document.file_id}', '{(message.caption or '')}', {current_timestamp()})")
     await delete_message(message)
 
 
 async def voice_message_handler(message: types.Message):
     if message.from_user.id in admin_ids:
         await group_msg(message.voice.file_id, None, 'voice', message.voice.file_id)
-    db_execute(f"insert into media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'voice', '{message.voice.file_id}', '{(message.caption or '')}', {current_timestamp()})")
+    db_execute(f"insert into md_media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'voice', '{message.voice.file_id}', '{(message.caption or '')}', {current_timestamp()})")
     await delete_message(message)
 
 
 async def video_note_message_handler(message: types.Message):
     if message.from_user.id in admin_ids:
         await group_msg(message.video_note.file_id, None, 'video_note', message.video_note.file_id)
-    db_execute(f"insert into media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'video_note', '{message.video_note.file_id}', '{(message.caption or '')}', {current_timestamp()})")
+    db_execute(f"insert into md_media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'video_note', '{message.video_note.file_id}', '{(message.caption or '')}', {current_timestamp()})")
     await delete_message(message)
 
 
 async def gif_message_handler(message: types.Message):
     if message.from_user.id in admin_ids:
         await group_msg(message.animation.file_id, None, 'animation', message.animation.file_id)
-    db_execute(f"insert into media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'gif', '{message.animation.file_id}', '{(message.caption or '')}', {current_timestamp()})")
+    db_execute(f"insert into md_media_dump (usr_id, type, id, message, time) values ({message.from_user.id}, 'gif', '{message.animation.file_id}', '{(message.caption or '')}', {current_timestamp()})")
     await delete_message(message)
 
 
