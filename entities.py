@@ -608,7 +608,7 @@ class Slide:
         new.header = self.header
         return new
 
-    async def deliver_message(self, user_id: int = None, postfix_text: str = None, is_bot_msg: bool = False):
+    async def deliver_message(self, user_id: int = None, postfix_text: str = None, is_bot_msg: bool = False, parse_mode=ParseMode.HTML):
         if user_id:
             self.user = User(user_id)
         if not isinstance(self.user, User):
@@ -635,54 +635,54 @@ class Slide:
                 msg = await tlg_bot.send_media_group(self.user.id,
                                                      mediagroup,
                                                      protect_content=True,
-                                                     parse_mode=ParseMode.HTML)
+                                                     parse_mode=parse_mode)
             elif self.media.unit_type() == 'text':
                 msg = await tlg_bot.send_message(self.user.id,
                                                  (self.message or '') + (postfix_text or ''),
                                                  protect_content=True,
                                                  reply_markup=self.keyboard.construct(self.user.id),
-                                                 parse_mode=ParseMode.HTML)
+                                                 parse_mode=parse_mode)
             elif self.media.unit_type() == 'photo':
                 msg = await tlg_bot.send_photo(self.user.id,
                                                self.media.file_id(),
                                                caption=(self.message or '') + (postfix_text or ''),
                                                protect_content=True,
                                                reply_markup=self.keyboard.construct(self.user.id),
-                                               parse_mode=ParseMode.HTML)
+                                               parse_mode=parse_mode)
             elif self.media.unit_type() == 'video':
                 msg = await tlg_bot.send_video(self.user.id,
                                                self.media.file_id(),
                                                caption=(self.message or '') + (postfix_text or ''),
                                                protect_content=True,
                                                reply_markup=self.keyboard.construct(self.user.id),
-                                               parse_mode=ParseMode.HTML)
+                                               parse_mode=parse_mode)
             elif self.media.unit_type() == 'document':
                 msg = await tlg_bot.send_document(self.user.id,
                                                   self.media.file_id(),
                                                   caption=(self.message or '') + (postfix_text or ''),
                                                   protect_content=True,
                                                   reply_markup=self.keyboard.construct(self.user.id),
-                                                  parse_mode=ParseMode.HTML)
+                                                  parse_mode=parse_mode)
             elif self.media.unit_type() == 'gif':
                 msg = await tlg_bot.send_animation(self.user.id,
                                                    self.media.file_id(),
                                                    caption=(self.message or '') + (postfix_text or ''),
                                                    protect_content=True,
                                                    reply_markup=self.keyboard.construct(self.user.id),
-                                                   parse_mode=ParseMode.HTML)
+                                                   parse_mode=parse_mode)
             elif self.media.unit_type() == 'voice':
                 msg = await tlg_bot.send_voice(self.user.id,
                                                self.media.file_id(),
                                                caption=(self.message or '') + (postfix_text or ''),
                                                protect_content=True,
                                                reply_markup=self.keyboard.construct(self.user.id),
-                                               parse_mode=ParseMode.HTML)
+                                               parse_mode=parse_mode)
             elif self.media.unit_type() == 'video_note':
                 msg = await tlg_bot.send_video_note(self.user.id,
                                                     self.media.file_id(),
                                                     protect_content=True,
                                                     reply_markup=self.keyboard.construct(self.user.id),
-                                                    parse_mode=ParseMode.HTML)
+                                                    parse_mode=parse_mode)
             else:
                 errorstack.add(f'Slide.deliver_message media type error: slide={self.id}, mediatype={self.media.unit_type()}')
 
@@ -777,7 +777,6 @@ class Slide:
         try:
             if self.telegram_chat_id and self.telegram_message_id:
                 try:
-                    errorstack.add(f"self.media.unit_type() = {self.media.unit_type()}")  # LOGS
                     if self.media.unit_type() == 'text':
                         if self.message:
                             await tlg_bot.edit_message_text(chat_id=self.telegram_chat_id,
@@ -819,17 +818,29 @@ class Slide:
 
     def move_medialist(self, decision: str, medialist_num: int):
         if self.media.type == 'medialist' and decision in ('back', 'forward'):
-            media_num = 0
+            media_num = medialist_num
             if decision == 'back':
                 media_num = (medialist_num - 1 + len(self.media.mediaunits)) % len(self.media.mediaunits)
             elif decision == 'forward':
                 media_num = (medialist_num + 1 + len(self.media.mediaunits)) % len(self.media.mediaunits)
-            self.keyboard.get_button(SPECIAL_BUTTON["medialist_back"]["row_num"],
-                                     SPECIAL_BUTTON["medialist_back"]["row_pos"])\
-                .modifier = f'medialist_back={self.telegram_chat_id},{self.telegram_message_id},{self.id},{media_num}'
-            self.keyboard.get_button(SPECIAL_BUTTON["medialist_forward"]["row_num"],
-                                     SPECIAL_BUTTON["medialist_forward"]["row_pos"])\
-                .modifier = f'medialist_forward={self.telegram_chat_id},{self.telegram_message_id},{self.id},{media_num}'
+            if self.keyboard.get_button(SPECIAL_BUTTON["medialist_back"]["row_num"],
+                                        SPECIAL_BUTTON["medialist_back"]["row_pos"]):
+                self.keyboard.get_button(SPECIAL_BUTTON["medialist_back"]["row_num"],
+                                         SPECIAL_BUTTON["medialist_back"]["row_pos"])\
+                    .modifier = f'medialist_back={self.telegram_chat_id},{self.telegram_message_id},{self.id},{media_num}'
+                self.keyboard.get_button(SPECIAL_BUTTON["medialist_forward"]["row_num"],
+                                         SPECIAL_BUTTON["medialist_forward"]["row_pos"])\
+                    .modifier = f'medialist_forward={self.telegram_chat_id},{self.telegram_message_id},{self.id},{media_num}'
+            else:
+                self.keyboard.add_buttons(Button(row_num=SPECIAL_BUTTON["medialist_back"]["row_num"],
+                                                 row_pos=SPECIAL_BUTTON["medialist_back"]["row_pos"],
+                                                 name='◀️',
+                                                 modifier=f'medialist_back={self.telegram_chat_id},{self.telegram_message_id},{self.id},{media_num}'),
+                                          Button(row_num=SPECIAL_BUTTON["medialist_forward"]["row_num"],
+                                                 row_pos=SPECIAL_BUTTON["medialist_forward"]["row_pos"],
+                                                 name='▶️',
+                                                 modifier=f'medialist_forward={self.telegram_chat_id},{self.telegram_message_id},{self.id},{media_num}'))
+
             self.media.mediaunits = [self.media.mediaunits[media_num]]
 
     @staticmethod
@@ -857,16 +868,16 @@ class Slide:
             except Exception as err:
                 errorstack.add(f'ERR: Slide.schedule_create {type(err).__name__}/{err}')
 
-    def send_to_group(self, group: list):
+    async def send_to_group(self, group: list):
         for user_id in group:
-            self.send(User(user_id))
+            await self.send(User(user_id))
 
 
 class Question:
     def __init__(self, quest_id: int, user: User):
         self.user = user
-        self.slide = None
-        self.orig_keyboard = None
+        self.slide = Slide(message='')
+        self.orig_keyboard = Keyboard()
         self.create_quest_slide(int(dtbase.get_questionnaire_start_slide))
         self.finish_slide_id = int(dtbase.get_questionnaire_finish_slide(quest_id))
         self.answer = None
@@ -889,7 +900,7 @@ class Question:
             return 'buttons'
 
     async def send(self):
-        self.slide.send(self.user)
+        await self.slide.send(self.user)
 
     async def send_next(self):
         next_id = int(dtbase.get_questionnaire_next_slide(self.slide.id))

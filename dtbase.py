@@ -71,26 +71,6 @@ def set_start_slide(bot_id):
         db_execute(f"insert into md_slides (message, header, modifier, bot_id) values ('Стартовый слайд', '{bot_id}. Старт', 'start', '{bot_id}')")
 
 
-def get_slide_deprecated(slide_id, bot_id):  # DEPRECATED
-    try:
-        if type(slide_id) is int or slide_id.isdigit():
-            return db_execute(f"select s.id, m.media_id, s.message, m.type, "
-                              f"s.bot_id, s.modifier, s.appearance_mod, s.schedule_set, s.schedule_priority, s.header "
-                              f"from md_slides s "
-                              f"left join md_media m on s.media_id = m.id "
-                              f"where s.id = {slide_id} "
-                              f"and s.bot_id = '{bot_id}'")[0]
-        else:
-            return db_execute(f"select s.id, m.media_id, s.message, m.type, "
-                              f"s.bot_id, s.modifier, s.appearance_mod, s.schedule_set, s.schedule_priority, s.header "
-                              f"from md_slides s "
-                              f"left join md_media m on s.media_id = m.id "
-                              f"where s.modifier = '{slide_id}' "
-                              f"and s.bot_id = '{bot_id}'")[0]
-    except IndexError:
-        errorstack.add(f"get_slide({slide_id}, '{bot_id}') not found")
-
-
 def get_slide(slide_id, bot_id):
     try:
         if type(slide_id) is int or slide_id.isdigit():
@@ -123,16 +103,6 @@ def get_media_by_id(db_id):
 
 def get_mediagroup(group_id):
     return db_execute(f"select m.media_id, m.type, g.order_id from md_mediagroups g, md_media m where m.id = g.media_id and g.group_id = {group_id} order by g.order_id")
-
-
-def get_medialist_first(group_id):
-    return get_mediagroup(group_id)[0]
-
-
-def get_medialist_cnt(group_id, media_cnt):
-    # return db_execute(f"select type, media_id from media "
-    #                   f"where id = (select media_id_{media_cnt} from mediagroups where id = {medialist_id})")[0]
-    return get_medialist_first(group_id)  # ПОЛНОСТЬЮ ПЕРЕРАБОТАТЬ, ЭТО ГОВНО
 
 
 def get_keyboard(slide_id):

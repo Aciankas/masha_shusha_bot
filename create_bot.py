@@ -140,9 +140,9 @@ async def invalid_query_id_handler(update, error):
     return True
 
 
-from dtbase import get_scheduled_be_send, get_slide_deprecated, delete_scheduled, is_scheduled_exists, \
+from dtbase import get_scheduled_be_send, delete_scheduled, is_scheduled_exists, \
     get_scheduled_coupons_be_closed, cancel_coupon, is_coupon_active
-from message_constructor import construct_slide_from_message, slide_button_appears
+from entities import Slide, User, Coupon
 
 
 async def scheduler_job():
@@ -150,23 +150,23 @@ async def scheduler_job():
     scheduled_messages = get_scheduled_be_send(bot_id)
     for message in scheduled_messages:
         try:
-            slide = get_slide_deprecated(int(message['slide_id']), bot_id)
             if is_scheduled_exists(message['send_time'], message['usr_id'], message['slide_id']):
-                if await slide_button_appears(slide["appearance_mod"], int(message['usr_id'])):
-                    await construct_slide_from_message(slide, int(message['usr_id']), is_bot_msg=True)
+                await Slide(int(message['slide_id'])).send(User(message['usr_id']), is_bot_msg=True)
                 delete_scheduled(message['send_time'], message['usr_id'], message['slide_id'])
         except Exception as err:
-            await group_msg(f"ScheduleSlideError: {str(message)}, {err}")
+            errorstack.add(f"ERR: ScheduleSlide: {str(message)}, {type(err).__name__} / {err}")
     coupons_canceled = get_scheduled_coupons_be_closed(bot_id)
-    for coupon in coupons_canceled:
+    for fetch_coupon in coupons_canceled:
         try:
-            slide = get_slide_deprecated(int(coupon['end_slide_id']), bot_id)
-            is_active = is_coupon_active(coupon['usr_id'], coupon['coupon_id'])
-            cancel_coupon(coupon['end_time'], coupon['usr_id'], coupon['coupon_id'])
-            if await slide_button_appears(slide["appearance_mod"], int(coupon['usr_id'])) and is_active:
-                await construct_slide_from_message(slide, int(coupon['usr_id']), is_bot_msg=True)
+            slide = Slide(int(fetch_coupon['end_slide_id']))
+            coupon = Coupon(fetch_coupon['coupon_id'], fetch_coupon['usr_id'])
+
+            is_active = is_coupon_active(coupon.user_id, coupon.id)
+            cancel_coupon(coupon.end_time, coupon.user_id, coupon.id)
+            if is_active:
+                await slide.send(User(coupon.user_id), is_bot_msg=True)
         except Exception as err:
-            await group_msg(f"ScheduleCouponError: {str(coupon)}, {err}")
+            errorstack.add(f"ERR: ScheduleCoupon: {str(fetch_coupon)}, {type(err).__name__} / {err}")
 
 
 scheduler.add_job(scheduler_job, trigger='interval', seconds=10, id="scheduler_job", replace_existing=True, misfire_grace_time=60*60*12)

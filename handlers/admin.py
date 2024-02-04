@@ -4,59 +4,12 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.dispatcher.filters import Text
 from aiogram import types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputFile
+from aiogram.types import InputFile
 
-import entities
+from entities import Slide, Keyboard, Button, User
 from create_bot import dp, admin_ids, base, cur, bot_id, delete_message, group_msg
-from dtbase import get_slide_deprecated, db_execute, get_keyboard, create_new_button, get_button_by_ids, delete_button_by_ids, \
-    insert_media
-from message_constructor import construct_slide, SlideError, construct_keyboard_from_select, \
-    construct_slide_from_message
+from dtbase import db_execute, create_new_button, delete_button_by_ids, insert_media
 from aiogram.utils.exceptions import WrongFileIdentifier
-
-
-def slide_change_kb(slide_id: int):
-    return InlineKeyboardMarkup()\
-        .row(InlineKeyboardButton(text='change_media',
-                                  callback_data=f'change_media={slide_id}'))\
-        .row(InlineKeyboardButton(text='change_message',
-                                  callback_data=f'change_message={slide_id}'))\
-        .row(InlineKeyboardButton(text='change_bot_id',
-                                  callback_data=f'change_bot_id={slide_id}'))\
-        .row(InlineKeyboardButton(text='change_modifier',
-                                  callback_data=f'change_modifier={slide_id}'))\
-        .row(InlineKeyboardButton(text='change_appearance_mod',
-                                  callback_data=f'change_appearance_mod={slide_id}'))\
-        .row(InlineKeyboardButton(text='change_schedule_set',
-                                  callback_data=f'change_schedule_set={slide_id}'))\
-        .row(InlineKeyboardButton(text='change_schedule_priority',
-                                  callback_data=f'change_schedule_priority={slide_id}'))\
-        .row(InlineKeyboardButton(text='change_header',
-                                  callback_data=f'change_header={slide_id}'))\
-        .row(InlineKeyboardButton(text='change_buttons',
-                                  callback_data=f'change_buttons={slide_id}'))
-
-
-def button_change_kb(slide_id: int, row_num: int, row_pos: int):
-    return InlineKeyboardMarkup()\
-        .row(InlineKeyboardButton(text='chg_button_row_num',
-                                  callback_data=f'chg_button_row_num={slide_id},{row_num},{row_pos}'))\
-        .row(InlineKeyboardButton(text='chg_button_row_pos',
-                                  callback_data=f'chg_button_row_pos={slide_id},{row_num},{row_pos}'))\
-        .row(InlineKeyboardButton(text='chg_button_slide_id',
-                                  callback_data=f'chg_button_slide_id={slide_id},{row_num},{row_pos}'))\
-        .row(InlineKeyboardButton(text='chg_button_slide_link',
-                                  callback_data=f'chg_button_slide_link={slide_id},{row_num},{row_pos}'))\
-        .row(InlineKeyboardButton(text='chg_button_name',
-                                  callback_data=f'chg_button_name={slide_id},{row_num},{row_pos}'))\
-        .row(InlineKeyboardButton(text='chg_button_url',
-                                  callback_data=f'chg_button_url={slide_id},{row_num},{row_pos}'))\
-        .row(InlineKeyboardButton(text='chg_button_modifier',
-                                  callback_data=f'chg_button_modifier={slide_id},{row_num},{row_pos}'))\
-        .row(InlineKeyboardButton(text='chg_button_appearance_mod',
-                                  callback_data=f'chg_button_appearance_mod={slide_id},{row_num},{row_pos}'))\
-        .row(InlineKeyboardButton(text='delete_button',
-                                  callback_data=f'delete_button={slide_id},{row_num},{row_pos}'))
 
 
 class FSMSlideChange(StatesGroup):
@@ -301,11 +254,7 @@ async def test_raw_slide_post(message: types.Message):
         if len(cmd_list) == 2 and cmd_list[1].isdigit():
             slide_id = cmd_list[1]
             try:
-                slide = get_slide_deprecated(int(slide_id), bot_id)
-                try:
-                    await construct_slide(slide, message)
-                except SlideError:
-                    await message.answer("Что-то пошло не так")
+                await Slide(int(slide_id)).answer(message)
             except ValueError:
                 await group_msg('Неверный номер слайда')
             except Exception as err:
@@ -315,35 +264,44 @@ async def test_raw_slide_post(message: types.Message):
     await delete_message(message)
 
 
-async def test_slide_menu(slide_id: str, user_id=admin_ids[0]):
+async def test_slide_menu(slide_id: str or int, user: User):
     try:
         if slide_id == 'new':
             db_execute(f"insert into md_slides (bot_id, message) values ('{bot_id}', 'empty')")
             slide_id = db_execute(f"select max(id) as id from md_slides")[0]["id"]
-            await test_slide_menu(slide_id, user_id)
+            await test_slide_menu(slide_id, user)
         elif type(slide_id) is int or slide_id.isdigit():
-            slide = get_slide_deprecated(int(slide_id), bot_id)
-            for usr in admin_ids:
-                db_execute(f"delete from ft_user_activity where usr_id = {usr};")
-            await group_msg(f"slide = {slide['id']}\n"
-                            f"header = {slide['header']}\n"
-                            f"media_id = {slide['media_id']}\n"
-                            f"type = {slide['type']}\n"
-                            f"message = {slide['message']}\n"
-                            f"bot_id = {slide['bot_id']}\n"
-                            f"modifier = {slide['modifier']}\n"
-                            f"appearance_mod = {slide['appearance_mod']}\n"
-                            f"schedule_set = {slide['schedule_set']}\n"
-                            f"schedule_priority = {slide['schedule_priority']}",
-                            keyboard=slide_change_kb(slide['id']),
-                            parse_mode=None)
-            try:
-                await construct_slide_from_message(slide, user_id=user_id)
-            except SlideError:
-                await group_msg("Что-то пошло не так")
-            for usr in admin_ids:
-                db_execute(f"delete from ft_user_activity where usr_id = {usr}; "
-                           f"delete from ft_schedule where usr_id = {usr}; ")
+
+            slide = Slide(int(slide_id))
+
+            if user.id in admin_ids:
+                db_execute(f"delete from ft_user_activity where usr_id = {user.id};")
+
+            await Slide(message=f"slide = {slide.id}\n"
+                                f"header = {slide.header}\n"
+                                f"media_id = {slide.media.file_id()}\n"
+                                f"type = {slide.media.type}\n"
+                                f"message = {slide.message}\n"
+                                f"bot_id = {slide.bot_id}\n"
+                                f"modifier = {slide.modifier}\n"
+                                f"appearance_mod = {slide.appearance_mod}\n"
+                                f"schedule_set = {slide.schedule_set}\n"
+                                f"schedule_priority = {slide.schedule_priority}",
+                        keyboard=Keyboard(Button(1, 1, name='mediafile', modifier=f'change_media={slide.id}'),
+                                          Button(2, 1, name='message', modifier=f'change_message={slide.id}'),
+                                          Button(3, 1, name='buttons', modifier=f'change_buttons={slide.id}'),
+                                          Button(4, 1, name='bot_id', modifier=f'change_bot_id={slide.id}'),
+                                          Button(5, 1, name='modifier', modifier=f'change_modifier={slide.id}'),
+                                          Button(6, 1, name='appearance_mod', modifier=f'change_appearance_mod={slide.id}'),
+                                          Button(7, 1, name='schedule_set', modifier=f'change_schedule_set={slide.id}'),
+                                          Button(8, 1, name='schedule_priority', modifier=f'change_schedule_priority={slide.id}'))
+                        ).deliver_message(user.id, parse_mode=None)
+
+            await slide.deliver_message(user.id)
+
+            if user.id in admin_ids:
+                db_execute(f"delete from ft_user_activity where usr_id = {user.id}; "
+                           f"delete from ft_schedule where usr_id = {user.id}; ")
     except ValueError:
         await group_msg('Неверный номер слайда')
     except Exception as err:
@@ -601,55 +559,59 @@ async def receive_changed_header(message: types.Message, state: FSMContext):
     await test_slide_post(message)
 
 
-async def get_test_keyboard(slide_id):
-    keyboard_select = get_keyboard(slide_id)
-    for button in keyboard_select:
-        button["name"] = f"{button['row_num']}.{button['row_pos']}.{button['name']}"
-        button["modifier"] = f"change_btn={slide_id},{button['row_num']},{button['row_pos']}"
-    keyboard = await construct_keyboard_from_select(keyboard_select)
-    if keyboard is None:
-        keyboard = InlineKeyboardMarkup()
-    keyboard.row(InlineKeyboardButton(text="Create new button", callback_data=f'new_btn={slide_id}'))
-    keyboard.row(InlineKeyboardButton(text="Return", callback_data=f'test_slide_post={slide_id}'))
-    return keyboard
-
-
 @dp.callback_query_handler(text_startswith="change_buttons")
-async def change_buttons_menu(value, state: FSMContext):
-    if type(value) is types.CallbackQuery:
-        slide_id = int(value.data.split('=')[1].split(',')[0])
-    elif type(value) is int:
-        slide_id = value
-    else:
-        raise TypeError
-    await group_msg("Сhoose button below:", keyboard=await get_test_keyboard(slide_id=slide_id))
+async def callback_buttons_menu(callback: types.CallbackQuery, state: FSMContext):
+    slide_id = int(callback.data.split('=')[1].split(',')[0])
+    await change_buttons_menu(state, slide_id, callback.from_user.id)
+    await callback.answer()
+
+
+async def change_buttons_menu(state: FSMContext, slide_id: int, user_id: int):
+    keyboard = Slide(slide_id).keyboard
+    for button in keyboard.buttons:
+        button.name = f"{button.row_num}.{button.row_pos}.{button.name}"
+        button.modifier = f"change_btn={slide_id},{button.row_num},{button.row_pos}"
+
+    keyboard.add_buttons(Button(998, 1, name="Create new button", modifier=f'new_btn={slide_id}'),
+                         Button(999, 1, name="Return", modifier=f'test_slide_post={slide_id}'))
+
+    await Slide(message="Сhoose button below:", keyboard=keyboard).deliver_message(user_id)
     await FSMSlideChange.slide_change_buttons.set()
     async with state.proxy() as data:
         data['slide_id'] = slide_id
-    if type(value) is types.CallbackQuery:
-        await value.answer()
 
 
 @dp.callback_query_handler(text_startswith="new_btn", state=FSMSlideChange.slide_change_buttons)
 async def create_button(callback: types.CallbackQuery, state: FSMContext):
     create_new_button(int(callback.data.split('=')[1]))
-    await change_buttons_menu(callback, state)
+    await callback_buttons_menu(callback, state)
 
 
 @dp.callback_query_handler(text_startswith="change_btn", state=FSMSlideChange.slide_change_buttons)
 async def change_button_menu(callback: types.CallbackQuery, state: FSMContext):
-    info = callback.data.split('=')[1].split(',')
-    button = get_button_by_ids(slide_id=info[0], row_num=info[1], row_pos=info[2])
-    await group_msg(f"row_num = {button['row_num']}\n"
-                    f"row_pos = {button['row_pos']}\n"
-                    f"slide_id = {button['slide_id']}\n"
-                    f"slide_link = {button['slide_link']}\n"
-                    f"name = {button['name']}\n"
-                    f"url = {button['url']}\n"
-                    f"modifier = {button['modifier']}\n"
-                    f"appearance_mod = {button['appearance_mod']}",
-                    keyboard=button_change_kb(slide_id=int(info[0]), row_num=int(info[1]), row_pos=int(info[2])),
-                    parse_mode=None)
+    user = User(callback.from_user.id)
+    info = list(map(lambda x: int(x), callback.data.split('=')[1].split(',')))
+    button = Button(slide_id=info[0], row_num=info[1], row_pos=info[2])
+
+    await Slide(message=f"row_num = {button.row_num}\n"
+                        f"row_pos = {button.row_pos}\n"
+                        f"slide_id = {button.slide_id}\n"
+                        f"slide_link = {button.slide_link}\n"
+                        f"name = {button.name}\n"
+                        f"url = {button.url}\n"
+                        f"modifier = {button.modifier}\n"
+                        f"appearance_mod = {button.appearance_mod}",
+                keyboard=Keyboard(Button(1, 1, name='chg_button_row_num', modifier=f'chg_button_row_num={button.slide_id},{button.row_num},{button.row_pos}'),
+                                  Button(2, 1, name='chg_button_row_pos', modifier=f'chg_button_row_pos={button.slide_id},{button.row_num},{button.row_pos}'),
+                                  Button(3, 1, name='chg_button_slide_id', modifier=f'chg_button_slide_id={button.slide_id},{button.row_num},{button.row_pos}'),
+                                  Button(4, 1, name='chg_button_slide_link', modifier=f'chg_button_slide_link={button.slide_id},{button.row_num},{button.row_pos}'),
+                                  Button(5, 1, name='chg_button_name', modifier=f'chg_button_name={button.slide_id},{button.row_num},{button.row_pos}'),
+                                  Button(6, 1, name='chg_button_url', modifier=f'chg_button_url={button.slide_id},{button.row_num},{button.row_pos}'),
+                                  Button(7, 1, name='chg_button_modifier', modifier=f'chg_button_modifier={button.slide_id},{button.row_num},{button.row_pos}'),
+                                  Button(8, 1, name='chg_button_appearance_mod', modifier=f'chg_button_appearance_mod={button.slide_id},{button.row_num},{button.row_pos}'),
+                                  Button(9, 1, name='delete_button', modifier=f'delete_button={button.slide_id},{button.row_num},{button.row_pos}'))
+                ).deliver_message(user.id, parse_mode=None)
+
     await FSMSlideChange.slide_change_buttons.set()
     async with state.proxy() as data:
         data['slide_id'] = info[0]
@@ -660,7 +622,7 @@ async def change_button_menu(callback: types.CallbackQuery, state: FSMContext):
 async def delete_button(callback: types.CallbackQuery, state: FSMContext):
     info = callback.data.split('=')[1].split(',')
     delete_button_by_ids(slide_id=info[0], row_num=info[1], row_pos=info[2])
-    await change_buttons_menu(callback, state)
+    await callback_buttons_menu(callback, state)
     await callback.answer()
 
 
@@ -689,7 +651,7 @@ async def receive_chg_button_row_num(message: types.Message, state: FSMContext):
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_row_num - {err}")
-    await change_buttons_menu(slide_id, state)
+    await change_buttons_menu(state, slide_id, message.from_user.id)
 
 
 @dp.callback_query_handler(text_startswith="chg_button_row_pos", state=FSMSlideChange.slide_change_buttons)
@@ -717,7 +679,7 @@ async def receive_chg_button_row_pos(message: types.Message, state: FSMContext):
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_row_pos - {err}")
-    await change_buttons_menu(slide_id, state)
+    await change_buttons_menu(state, slide_id, message.from_user.id)
 
 
 @dp.callback_query_handler(text_startswith="chg_button_slide_id", state=FSMSlideChange.slide_change_buttons)
@@ -745,7 +707,7 @@ async def receive_chg_button_slide_id(message: types.Message, state: FSMContext)
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_slide_id - {err}")
-    await change_buttons_menu(slide_id, state)
+    await change_buttons_menu(state, slide_id, message.from_user.id)
 
 
 @dp.callback_query_handler(text_startswith="chg_button_slide_link", state=FSMSlideChange.slide_change_buttons)
@@ -773,7 +735,7 @@ async def receive_chg_button_slide_link(message: types.Message, state: FSMContex
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_slide_link - {err}")
-    await change_buttons_menu(slide_id, state)
+    await change_buttons_menu(state, slide_id, message.from_user.id)
 
 
 @dp.callback_query_handler(text_startswith="chg_button_name", state=FSMSlideChange.slide_change_buttons)
@@ -801,7 +763,7 @@ async def receive_chg_button_name(message: types.Message, state: FSMContext):
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_name - {err}")
-    await change_buttons_menu(slide_id, state)
+    await change_buttons_menu(state, slide_id, message.from_user.id)
 
 
 @dp.callback_query_handler(text_startswith="chg_button_url", state=FSMSlideChange.slide_change_buttons)
@@ -829,7 +791,7 @@ async def receive_chg_button_url(message: types.Message, state: FSMContext):
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_url - {err}")
-    await change_buttons_menu(slide_id, state)
+    await change_buttons_menu(state, slide_id, message.from_user.id)
 
 
 @dp.callback_query_handler(text_startswith="chg_button_modifier", state=FSMSlideChange.slide_change_buttons)
@@ -861,7 +823,7 @@ async def receive_chg_button_modifier(message: types.Message, state: FSMContext)
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_modifier - {err}")
-    await change_buttons_menu(slide_id, state)
+    await change_buttons_menu(state, slide_id, message.from_user.id)
 
 
 @dp.callback_query_handler(text_startswith="chg_button_appearance_mod", state=FSMSlideChange.slide_change_buttons)
@@ -896,28 +858,10 @@ async def receive_chg_button_appearance_mod(message: types.Message, state: FSMCo
                    f"where slide_id = {slide_id} and row_num = {row_num} and row_pos = {row_pos}")
     except Exception as err:
         await group_msg(f"receive_chg_button_appearance_mod - {err}")
-    await change_buttons_menu(slide_id, state)
-
-
-async def obj_testing(message: types.Message):
-    if message.from_user.id in admin_ids:
-        test_id = int(message.text.split(' ')[1])
-        entity = entities.Merchandise(test_id)
-
-        courses_str = ''
-        for course in entity.courses:
-            courses_str += f"course_id: {course.id} - {type(course.id).__name__}\n"\
-                           f"course_name: {course.name} - {type(course.name).__name__}\n"\
-                           f"course_bot_id: {course.bot_id} - {type(course.bot_id).__name__}\n"
-
-        await group_msg(f"id: {entity.id} - {type(entity.id).__name__}\n"
-                        f"name: {entity.name} - {type(entity.name).__name__}\n"
-                        f"price: {entity.price} - {type(entity.price).__name__}\n"
-                        f"courses:\n{courses_str}")
+    await change_buttons_menu(state, slide_id, message.from_user.id)
 
 
 def register_handlers_admin():  # Порядок Важен!
-    dp.register_message_handler(obj_testing, Text(startswith='/tst'), state='*')  # УДАЛИТЬ ПОСЛЕ ТЕСТИРОВАНИЯ - ЦЕ ХУIТА
     dp.register_message_handler(cm_cancel, state='*', commands='отмена')
     dp.register_message_handler(cm_cancel, Text(equals='/отмена', ignore_case=True), state='*')
     dp.register_message_handler(receive_changed_message, state=FSMSlideChange.slide_change_message)

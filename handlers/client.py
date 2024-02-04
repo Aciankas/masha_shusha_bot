@@ -149,7 +149,6 @@ async def medialist_moving(callback: types.CallbackQuery):
     slide = Slide(slide_id=int(callback.data.split("=")[1].split(",")[2]),
                   telegram_message_id=int(callback.data.split("=")[1].split(",")[1]),
                   telegram_chat_id=int(callback.data.split("=")[1].split(",")[0]))
-
     slide.move_medialist(decision=callback.data.split("=")[0].split("_")[1],
                          medialist_num=int(callback.data.split("=")[1].split(",")[3]))
 
